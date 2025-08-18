@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+pymongo
+pandas
+matplotlib
+python-dateutil
+openai
+
+# export MONGO_URI="mongodb://report:report@localhost:27017/report_db?authSource=report_db"
+# export OUTPUT_DIR="./out"       # (선택) 파일 저장 폴더, 없으면 생성
