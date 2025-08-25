@@ -11,7 +11,7 @@ from .utils.timezone import KST
 from .utils import fonts
 from .services.aggregator import build_frames  # 주문 데이터 분석
 from .services.review_analyzer import analyze_reviews  # 리뷰 데이터 분석
-from .services.pdf_generator import build_onepage_pdf  # PDF 생성
+from .services.pdf_generator import build_report_pdf  # PDF 생성
 from .services import plotter
 
 import logging
@@ -46,13 +46,13 @@ def generate_json(req: ReportGenerationRequest = None):
         filename = f"{base}.pdf"
         path = os.path.join(outdir, filename)
 
-        # 주문이 없을 경우를 대비해 storeName을 가져옴
+        # 주문이 없을 경우를 대비해 storeName 가져옴
         store_name = req.orders[0].storeName if req.orders else req.storeId
         
-        # 1-1. 주문 데이터 분석 -> 지표별 데이터프레임
+        # 1-1. 주문 데이터 -> 지표별 데이터프레임 생성
         frames = build_frames(order_payload)
 
-        # 1-2. 데이터프레임을 차트(Figure)로 변환
+        # 1-2. 데이터프레임 -> 차트(Figure)로 변환
         figures = {
             "menu_total": plotter.plot_menu_total(frames["menu_total"]),
             "menu_by_gender": plotter.plot_menu_gender(frames["menu_by_gender"]),
@@ -62,12 +62,20 @@ def generate_json(req: ReportGenerationRequest = None):
             "cancel_rate": plotter.plot_cancel_rate(frames["cancel_rate"]),
         }
         
+        # --- 디버깅용: 각 차트를 PNG 파일로 저장 ---
+        # LayoutError의 원인을 파악하기 위해 각 차트를 이미지 파일로 저장합니다.
+        for name, fig in figures.items():
+            if fig:
+                debug_filename = f"debug_chart_{base}_{name}.png"
+                debug_filepath = os.path.join(outdir, debug_filename)
+                fig.savefig(debug_filepath, dpi=150, bbox_inches='tight')
+        
         # 2. 리뷰 데이터 분석
         review_insights = analyze_reviews(review_payload)
         
         # 3. 주문/리뷰 분석 결과들을 모아 PDF 파일로 생성
         with open(path, "wb") as f:
-            build_onepage_pdf(
+            build_report_pdf(
                 figures["menu_total"],
                 figures["menu_by_gender"],
                 figures["menu_by_age"],
@@ -79,7 +87,7 @@ def generate_json(req: ReportGenerationRequest = None):
                 store_name,
                 start,
                 end,
-                review_insights, # 리뷰 분석 결과 전달
+                review_insights,
                 f
             )
 
