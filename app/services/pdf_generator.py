@@ -1,5 +1,6 @@
 import io
 from datetime import date
+import re
 from typing import Any, Dict, List
 
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, PageBreak, KeepTogether, Table, TableStyle
@@ -42,6 +43,7 @@ def build_report_pdf(
     hour_menu: Any,
     new_vs_return: Any,
     cancel_rate: Any,
+    chart_insights: str,
     # reorder_gap_hist: Any,
     # reorder_top3: Any,
     store_name: str,
@@ -59,6 +61,9 @@ def build_report_pdf(
     styles.add(ParagraphStyle(name='Korean-H2', fontName=KOR_FONT_NAME, fontSize=12, spaceBefore=10, spaceAfter=4))
     styles.add(ParagraphStyle(name='Korean-H2-Center', parent=styles['Korean-H2'], alignment=TA_CENTER, spaceBefore=6, spaceAfter=4))
     styles.add(ParagraphStyle(name='Korean-Body', fontName=KOR_FONT_NAME, fontSize=9, leading=14))
+    styles.add(ParagraphStyle(name='Korean-H3', fontName=KOR_FONT_NAME, fontSize=10, spaceBefore=8, spaceAfter=2, textColor=colors.HexColor('#1D3557')))
+    styles.add(ParagraphStyle(name='Korean-Suggestion', parent=styles['Korean-Body'], leftIndent=12, spaceBefore=2, textColor=colors.HexColor('#457B9D')))
+    styles.add(ParagraphStyle(name='Korean-Body-Indented', fontName=KOR_FONT_NAME, fontSize=9, leading=14, leftIndent=10))
     styles.add(ParagraphStyle(name='Korean-Quote', fontName=KOR_FONT_NAME, fontSize=9, leading=12, leftIndent=12, textColor='grey'))
     story = []
 
@@ -147,9 +152,44 @@ def build_report_pdf(
         ]))
         story.append(chart_table)
 
-    # === 리뷰 분석글 ===
-    if review_insights and (review_insights.get('pros') or review_insights.get('cons')):
+    # === AI 차트 분석글 ===
+    if chart_insights:
         story.append(PageBreak())
+        story.append(Paragraph("AI 차트 리포트", styles['Korean-H1']))
+        
+        # AI가 생성한 분석글을 가독성 좋게 파싱하여 PDF에 추가합니다.
+        for line in chart_insights.split('\n'):
+            line = line.strip()
+            if not line:
+                continue
+
+            # 모든 라인에 대해 공통적으로 인라인 강조(**...**)를 <b> 태그로 변환합니다.
+            content = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', line)
+
+            # 1. 메인 섹션 제목 (e.g., **종합 분석**)
+            if line.startswith('**') and line.endswith('**'):
+                # 제목 태그(**)를 제거하고 내용만 사용합니다.
+                clean_content = line.strip('*').strip()
+                story.append(Paragraph(clean_content, styles['Korean-H2']))
+                story.append(Spacer(1, 0.2*cm))
+            # 2. 분석 항목 소제목 (e.g., ### 메뉴 인기 분석)
+            elif line.startswith('### '):
+                # 소제목 태그(###)를 제거하고, 인라인 강조가 적용된 내용을 사용합니다.
+                story.append(Paragraph(content.lstrip('# ').strip(), styles['Korean-H3']))
+            # 3. 제안 (e.g., >> 제안: ...)
+            elif line.startswith('>> 제안:'):
+                # '>> 제안:' 부분을 굵게 처리하고, 폰트 문제 있는 이모지는 제거합니다.
+                final_content = re.sub(r'^(>>\s*제안:)', r'<b>\1</b>', content)
+                story.append(Paragraph(final_content, styles['Korean-Suggestion']))
+                story.append(Spacer(1, 0.6*cm)) # 각 분석 항목 사이에 충분한 여백 추가
+            # 4. 일반 분석 내용
+            else:
+                story.append(Paragraph(content, styles['Korean-Body']))
+
+    # === AI 리뷰 분석글 ===
+    if review_insights and (review_insights.get('pros') or review_insights.get('cons')):
+        if not chart_insights:
+            story.append(PageBreak())
         story.append(Paragraph("AI 리뷰 리포트", styles['Korean-H1']))
 
         def draw_insights(title: str, items: List[Dict]):
