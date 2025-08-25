@@ -11,6 +11,7 @@ from .utils.timezone import KST
 from .utils import fonts
 from .services.aggregator import build_frames  # 주문 데이터 분석
 from .services.review_analyzer import analyze_reviews  # 리뷰 데이터 분석
+from .services.chart_analyzer import analyze_charts  # 차트 분석
 from .services.pdf_generator import build_report_pdf  # PDF 생성
 from .services import plotter
 
@@ -26,7 +27,7 @@ def health():
     return {"ok": True, "time": datetime.now(KST).isoformat()}
 
 @app.post("/report/generate-json", response_model=GenerateJsonResponse)
-def generate_json(req: ReportGenerationRequest = None):
+def generate_json(req: Optional[ReportGenerationRequest] = None):
     
     try:
         fonts.setup_korean_font()
@@ -62,17 +63,19 @@ def generate_json(req: ReportGenerationRequest = None):
             "cancel_rate": plotter.plot_cancel_rate(frames["cancel_rate"]),
         }
         
-        # --- 디버깅용: 각 차트를 PNG 파일로 저장 ---
-        # LayoutError의 원인을 파악하기 위해 각 차트를 이미지 파일로 저장합니다.
-        for name, fig in figures.items():
-            if fig:
-                debug_filename = f"debug_chart_{base}_{name}.png"
-                debug_filepath = os.path.join(outdir, debug_filename)
-                fig.savefig(debug_filepath, dpi=150, bbox_inches='tight')
-        
+        # 1-3. 차트 이미지 -> AI 분석글 생성
+        chart_insights = analyze_charts(figures)
+
+        # # === DEBUG: 각 차트를 PNG 파일로 저장 ===
+        # for name, fig in figures.items():
+        #     if fig:
+        #         debug_filename = f"debug_chart_{base}_{name}.png"
+        #         debug_filepath = os.path.join(outdir, debug_filename)
+        #         fig.savefig(debug_filepath, dpi=150, bbox_inches='tight')
+
         # 2. 리뷰 데이터 분석
         review_insights = analyze_reviews(review_payload)
-        
+
         # 3. 주문/리뷰 분석 결과들을 모아 PDF 파일로 생성
         with open(path, "wb") as f:
             build_report_pdf(
@@ -82,6 +85,7 @@ def generate_json(req: ReportGenerationRequest = None):
                 figures["hour_menu"],
                 figures["new_vs_return"],
                 figures["cancel_rate"],
+                chart_insights,
                 # frames.get("reorder_gap_hist"), # NOTE: aggregator.py에서 비활성화
                 # frames.get("reorder_top3"),     # NOTE: aggregator.py에서 비활성화
                 store_name,
