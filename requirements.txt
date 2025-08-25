@@ -10,3 +10,7 @@ matplotlib
 openai        # 리뷰 요약/라벨링
 kss           # 한국어 문장 분리
 reportlab     # PDF 생성
+
+# PROD
+boto3         # AWS S3 연동
+mangum        # FastAPI on AWS Lambda
