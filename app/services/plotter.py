@@ -61,7 +61,7 @@ def plot_menu_total(df: pd.DataFrame) -> Figure:
     df = df.nlargest(15, "total_qty")  # 주문량 상위 10개 메뉴
     rects = ax.bar(df["menu_name"], df["total_qty"], color=PRIMARY_COLOR)
     _annot_bar(ax, rects)
-    ax.set_title(title, fontsize=12, fontweight="bold")
+    # ax.set_title(title, fontsize=12, fontweight="bold")
     ax.set_ylabel("주문 수량")
     ax.tick_params(axis='x', rotation=30)
     _theme(ax)
@@ -77,7 +77,7 @@ def plot_menu_gender(df: pd.DataFrame) -> Figure:
     pivot = pivot.nlargest(10, pivot.columns.tolist(), keep='all')  # 주문량 상위 10개 메뉴
     
     pivot.plot(kind='bar', ax=ax, width=0.8, color=CATEGORICAL_PALETTE)
-    ax.set_title(title, fontsize=12, fontweight="bold")
+    # ax.set_title(title, fontsize=12, fontweight="bold")
     ax.set_ylabel("주문 수량")
     ax.set_xlabel("")
     ax.tick_params(axis='x', rotation=30)
@@ -92,19 +92,22 @@ def plot_menu_age(df: pd.DataFrame) -> Figure:
         _empty_chart(ax, title); return fig
 
     pivot = df.pivot_table(index="menu_name", columns="age_band", values="qty_sum", aggfunc="sum").fillna(0)
-    pivot = pivot.nlargest(10, pivot.columns.tolist(), keep='all')  # 주문량 상위 10개 메뉴
     
+    top_menus = pivot.sum(axis=1).nlargest(10).index  # 주문량 상위 10개 메뉴
+    pivot = pivot.loc[top_menus]
+    pivot = pivot.sort_index()  #이름(가나다) 순 정렬
+
     # 연령대 순서 정렬
     age_order = sorted(df['age_band'].unique(), key=lambda x: (x.startswith('<'), x))
     pivot = pivot.reindex(columns=[c for c in age_order if c in pivot.columns])
 
     pivot.plot(kind='bar', stacked=True, ax=ax, width=0.8, color=CATEGORICAL_PALETTE)
-    ax.set_title(title, fontsize=12, fontweight="bold")
+    # ax.set_title(title, fontsize=12, fontweight="bold")
     ax.set_ylabel("주문 수량")
     ax.set_xlabel("")
     ax.tick_params(axis='x', rotation=30)
     _theme(ax)
-    ax.legend(title="연령대", bbox_to_anchor=(1.02, 1), loc='upper left')
+    ax.legend(title="연령대")
     return fig
 
 def plot_hour_menu(df: pd.DataFrame) -> Figure:
@@ -134,12 +137,13 @@ def plot_hour_menu(df: pd.DataFrame) -> Figure:
 
     im = ax.imshow(pivot, cmap=HEATMAP_CMAP, aspect='auto')
     fig.colorbar(im, ax=ax, shrink=0.8).set_label('주문 수량')
-    ax.set_title(title, fontsize=12, fontweight="bold")
+    # ax.set_title(title, fontsize=12, fontweight="bold")
     ax.set_xlabel("시간 (0-23시)")
     ax.set_ylabel("메뉴")
     ax.set_xticks(np.arange(0, 24, 2))  # 2시간 간격으로 눈금 표시
     ax.set_yticks(np.arange(len(pivot.index)))
     ax.set_yticklabels(pivot.index)
+    ax.grid(which="both", linestyle=":", linewidth=0.5, alpha=0.6)
     fig.tight_layout()
     return fig
 
@@ -153,8 +157,8 @@ def plot_new_vs_return(df: pd.DataFrame) -> Figure:
     data.plot(kind='pie', ax=ax, autopct='%1.1f%%', startangle=90, colors=NEW_RETURN_COLORS,
               wedgeprops={'linewidth': 0.5, 'edgecolor': 'white'},
               textprops={'fontsize': 10})
-    ax.set_title(title, fontsize=12, fontweight="bold")
-    ax.set_ylabel("")  # 파이 차트에서는 y라벨 불필요
+    # ax.set_title(title, fontsize=12, fontweight="bold")
+    ax.set_ylabel("")
     return fig
 
 def plot_cancel_rate(df: pd.DataFrame) -> Figure:
@@ -174,7 +178,7 @@ def plot_cancel_rate(df: pd.DataFrame) -> Figure:
     sizes = [non_cancel, cancel]
     
     ax.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=90, colors=CANCEL_RATE_COLORS)
-    ax.set_title(title, fontsize=12, fontweight="bold")
+    # ax.set_title(title, fontsize=12, fontweight="bold")
     ax.text(0, 0, f"{cancel}/{total}건", ha='center', va='center', fontsize=12)
     return fig
 
@@ -189,6 +193,6 @@ def plot_reorder_gap_hist(df: pd.DataFrame) -> Figure:
     
     rects = ax.bar(data["gap_bin"], data["count"], color=PRIMARY_COLOR)
     _annot_bar(ax, rects)
-    ax.set_title(title, fontsize=12, fontweight="bold")
+    # ax.set_title(title, fontsize=12, fontweight="bold")
     ax.set_ylabel("재주문 건수")
     return fig
