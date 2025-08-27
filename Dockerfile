@@ -10,4 +10,4 @@ RUN python3 -m pip install --upgrade pip && \
 COPY app/ ./app/main_prod.py
 # COPY fonts/ ./fonts/
 
-CMD [ "app.main-prod.handler"] 
+CMD [ "app.main_prod.handler"]
