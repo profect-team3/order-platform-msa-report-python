@@ -3,7 +3,7 @@ name: ECR Push - store
 on:
   push:
     branches:
-      - dev
+      - feat/#10-cicd
 #    branches: ["dev", "refactor/seperate-ci"]
 
 concurrency:
