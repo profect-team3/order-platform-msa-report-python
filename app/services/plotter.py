@@ -111,7 +111,7 @@ def plot_menu_age(df: pd.DataFrame) -> Figure:
     return fig
 
 def plot_hour_menu(df: pd.DataFrame) -> Figure:
-    fig, ax = plt.subplots(figsize=(8, 6))
+    fig, ax = plt.subplots(figsize=(8, 4.9))
     title = "시간대별 메뉴 주문량"
     if df is None or df.empty:
         _empty_chart(ax, title); return fig

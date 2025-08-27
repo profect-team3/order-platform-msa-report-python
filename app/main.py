@@ -27,7 +27,7 @@ def health():
     return {"ok": True, "time": datetime.now(KST).isoformat()}
 
 @app.post("/report/generate-json", response_model=GenerateJsonResponse)
-def generate_json(req: Optional[ReportGenerationRequest] = None):
+def generate_json(req: ReportGenerationRequest = None):
     
     try:
         fonts.setup_korean_font()
