@@ -12,6 +12,7 @@ from .utils.timezone import KST
 from .utils import fonts
 from .services.aggregator import build_frames  # 주문 데이터 분석
 from .services.review_analyzer import analyze_reviews  # 리뷰 데이터 분석
+from .services.chart_analyzer import analyze_charts # 차트 분석
 from .services.pdf_generator import build_report_pdf  # PDF 생성
 from .services import plotter
 
@@ -69,10 +70,13 @@ def generate_json(req: ReportGenerationRequest = None):
             "cancel_rate": plotter.plot_cancel_rate(frames["cancel_rate"]),
         }
         
+        # 1-3. 차트 이미지 -> AI 분석글 생성
+        chart_insights = analyze_charts(figures)
+
         # 2. 리뷰 데이터 분석
         review_insights = analyze_reviews(review_payload)
         
-        # 3. 주문/리뷰 분석 결과들을 모아 PDF 파일로 생성
+        # 3. 주문/리뷰/차트 분석 결과들을 모아 PDF 파일로 생성
         pdf_buffer = io.BytesIO()
         try:
             build_report_pdf(
@@ -82,6 +86,7 @@ def generate_json(req: ReportGenerationRequest = None):
                 figures["hour_menu"],
                 figures["new_vs_return"],
                 figures["cancel_rate"],
+                chart_insights,
                 store_name,
                 start,
                 end,

@@ -1,6 +1,7 @@
 fastapi
-uvicorn[standard]
-python-dotenv # .env 파일 로드
+uvicorn[standard]  # 로컬 개발용 서버
+python-dotenv      # .env 파일 로드
+
 pandas
 python-dateutil
 scikit-learn  # 임베딩 유사도 계산
