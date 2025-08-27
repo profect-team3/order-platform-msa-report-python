@@ -3,7 +3,7 @@ name: ECR Push - store
 on:
   push:
     branches:
-      - feat/#10-cicd
+      - dev
 #    branches: ["dev", "refactor/seperate-ci"]
 
 concurrency:
@@ -14,24 +14,23 @@ env:
   AWS_REGION: ap-northeast-2
   ECR_REPO: report-python
   LAMBDA_FUNCTION_NAME: report-python-lambda
-  LAMBDA_ALIAS: latest
 
 jobs:
-    #  test:
-    #    name: Run Python tests
-    #    runs-on: ubuntu-latest
-    #    steps:
-    #      - uses: actions/checkout@v4
-    #      - uses: actions/setup-python@v5
-    #        with:
-    #          python-version: "3.9"
-    #      - name: Install deps
-    #        run: |
-    #          python -m pip install --upgrade pip
-    #          pip install pytest
-    #          pip install -r requirements.txt
-    #      - name: Pytest
-    #        run: pytest -q --maxfail=1 --disable-warnings
+  #  test:
+  #    name: Run Python tests
+  #    runs-on: ubuntu-latest
+  #    steps:
+  #      - uses: actions/checkout@v4
+  #      - uses: actions/setup-python@v5
+  #        with:
+  #          python-version: "3.9"
+  #      - name: Install deps
+  #        run: |
+  #          python -m pip install --upgrade pip
+  #          pip install pytest
+  #          pip install -r requirements.txt
+  #      - name: Pytest
+  #        run: pytest -q --maxfail=1 --disable-warnings
 
   build_and_push:
     name: Build & Push to ECR
@@ -69,7 +68,7 @@ jobs:
           images: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO }}
           tags: |
             type=raw,value=latest
-           type=sha,format=short
+            type=sha,format=short
           labels: |
             org.opencontainers.image.source=${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -100,8 +99,8 @@ jobs:
           platforms: linux/amd64
 
   deploy_lambda:
-    name: Update Lambda (by digest) + Shift alias
-    runs-on: ubuntu-latest
+    name: Update Lambda (by digest)
+    runs-on: ubuntu-24.04
     needs: build_and_push
     permissions:
       id-token: write
@@ -120,8 +119,16 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Ensure Lambda exists
-        run: aws lambda get-function --function-name "${LAMBDA_FUNCTION_NAME}" >/dev/null
+      - name: Ensure Lambda exists and is Image type
+        run: |
+          set -euo pipefail
+          aws lambda get-function --function-name "${LAMBDA_FUNCTION_NAME}" >/dev/null
+          PKG=$(aws lambda get-function-configuration --function-name "${LAMBDA_FUNCTION_NAME}" --query 'PackageType' --output text)
+          echo "PackageType=${PKG}"
+          if [ "$PKG" != "Image" ]; then
+            echo "::error::Function PackageType is '$PKG'. Recreate it as Image to deploy container images."
+            exit 1
+          fi
 
       - name: Update function code (publish & capture version)
         id: update
@@ -129,21 +136,20 @@ jobs:
           IMAGE_URI_BY_DIGEST: ${{ env.REGISTRY }}/${{ env.IMAGE_REPO }}@${{ env.IMAGE_DIGEST }}
         run: |
           set -euo pipefail
-          # jq가 없을 경우 설치 (우분투 기본 포함인 경우도 많지만 안전하게)
           command -v jq >/dev/null 2>&1 || (sudo apt-get update -y && sudo apt-get install -y jq)
           
           echo "Using image: ${IMAGE_URI_BY_DIGEST}"
           OUT=$(aws lambda update-function-code \
-            --function-name "${LAMBDA_FUNCTION_NAME}" \
-            --image-uri "${IMAGE_URI_BY_DIGEST}" \
-            --publish)
-          
+          --function-name "${LAMBDA_FUNCTION_NAME}" \
+          --image-uri "${IMAGE_URI_BY_DIGEST}" \
+          --publish)
+            
           NEW_VERSION=$(echo "$OUT" | jq -r '.Version')
           NEW_IMAGE=$(echo "$OUT" | jq -r '.ImageUri')
-          
+            
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
           echo "new_image_uri=$NEW_IMAGE" >> $GITHUB_OUTPUT
-          
+            
           echo "Published version: $NEW_VERSION"
           echo "ImageUri: $NEW_IMAGE"
 
@@ -152,13 +158,13 @@ jobs:
         run: |
           set -euo pipefail
           PREV_VERSION=$(aws lambda get-alias \
-            --function-name "${LAMBDA_FUNCTION_NAME}" \
-            --name "${LAMBDA_ALIAS}" \
-            --query 'FunctionVersion' --output text 2>/dev/null || echo "")
+          --function-name "${LAMBDA_FUNCTION_NAME}" \
+          --name "${LAMBDA_ALIAS}" \
+          --query 'FunctionVersion' --output text 2>/dev/null || echo "")
           echo "prev_version=${PREV_VERSION}" >> $GITHUB_OUTPUT
-          
+                
           NEW_VERSION="${{ steps.update.outputs.new_version }}"
-          
+                
           if aws lambda get-alias --function-name "${LAMBDA_FUNCTION_NAME}" --name "${LAMBDA_ALIAS}" >/dev/null 2>&1; then
             aws lambda update-alias \
               --function-name "${LAMBDA_FUNCTION_NAME}" \
@@ -170,4 +176,4 @@ jobs:
               --name "${LAMBDA_ALIAS}" \
               --function-version "${NEW_VERSION}" >/dev/null
           fi
-          echo "shifted_to=${NEW_VERSION}" >> $GITHUB_OUTPUT
+            echo "shifted_to=${NEW_VERSION}" >> $GITHUB_OUTPUT
