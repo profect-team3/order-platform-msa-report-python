@@ -104,12 +104,15 @@ def generate_json(req: ReportGenerationRequest = None):
         s3_client = boto3.client("s3")
         s3_client.upload_fileobj(pdf_buffer, s3_bucket, s3_key)
         
-        s3_url = f"https://{s3_bucket}.s3.amazonaws.com/{s3_key}"
+        region_name = s3_client.meta.region_name
+        s3_url = f"https://{s3_bucket}.s3.{region_name}.amazonaws.com/{s3_key}"
 
-        return JSONResponse({
+        response_data = {
             "url": s3_url,
             "createdAt": now.isoformat()
-        })
+        }
+
+        return JSONResponse(response_data)
     except Exception as e:
         logger.exception("generate_json FAILED")
         raise HTTPException(status_code=500, detail=f"Report generation failed: {str(e)}")

@@ -45,5 +45,5 @@ class ReviewPayload(BaseModel):
 
 class GenerateJsonResponse(BaseModel):
     url: str
-    localPath: str
+    localPath: Optional[str] = None
     createdAt: str
