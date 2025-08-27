@@ -14,6 +14,7 @@ env:
   AWS_REGION: ap-northeast-2
   ECR_REPO: report-python
   LAMBDA_FUNCTION_NAME: report-python-lambda
+  LAMBDA_ALIAS: latest
 
 jobs:
   #  test:
@@ -109,6 +110,7 @@ jobs:
       REGISTRY: ${{ needs.build_and_push.outputs.registry }}
       IMAGE_REPO: ${{ needs.build_and_push.outputs.image_repo }}
       IMAGE_DIGEST: ${{ needs.build_and_push.outputs.image_digest }}
+      LAMBDA_ALIAS: latest
     steps:
       - uses: actions/checkout@v4
 
@@ -122,6 +124,7 @@ jobs:
       - name: Ensure Lambda exists and is Image type
         run: |
           set -euo pipefail
+          ALIAS="${LAMBDA_ALIAS:-latest}"
           aws lambda get-function --function-name "${LAMBDA_FUNCTION_NAME}" >/dev/null
           PKG=$(aws lambda get-function-configuration --function-name "${LAMBDA_FUNCTION_NAME}" --query 'PackageType' --output text)
           echo "PackageType=${PKG}"
