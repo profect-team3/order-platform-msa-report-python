@@ -14,29 +14,30 @@ env:
   AWS_REGION: ap-northeast-2
   ECR_REPO: report-python
   LAMBDA_FUNCTION_NAME: report-python-lambda
+  LAMBDA_ALIAS: latest
 
 jobs:
-#  test:
-#    name: Run Python tests
-#    runs-on: ubuntu-latest
-#    steps:
-#      - uses: actions/checkout@v4
-#      - uses: actions/setup-python@v5
-#        with:
-#          python-version: "3.9"
-#      - name: Install deps
-#        run: |
-#          python -m pip install --upgrade pip
-#          pip install pytest
-#          pip install -r requirements.txt
-#      - name: Pytest
-#        run: pytest -q --maxfail=1 --disable-warnings
+  #  test:
+  #    name: Run Python tests
+  #    runs-on: ubuntu-latest
+  #    steps:
+  #      - uses: actions/checkout@v4
+  #      - uses: actions/setup-python@v5
+  #        with:
+  #          python-version: "3.9"
+  #      - name: Install deps
+  #        run: |
+  #          python -m pip install --upgrade pip
+  #          pip install pytest
+  #          pip install -r requirements.txt
+  #      - name: Pytest
+  #        run: pytest -q --maxfail=1 --disable-warnings
 
   build_and_push:
     name: Build & Push to ECR
     runs-on: ubuntu-24.04
-#    needs: test
-#    if: ${{ needs.test.result == 'success' }}
+    #    needs: test
+    #    if: ${{ needs.test.result == 'success' }}
     outputs:
       image_digest: ${{ steps.build.outputs.digest }}
       registry: ${{ steps.ecr.outputs.registry }}
@@ -109,6 +110,7 @@ jobs:
       REGISTRY: ${{ needs.build_and_push.outputs.registry }}
       IMAGE_REPO: ${{ needs.build_and_push.outputs.image_repo }}
       IMAGE_DIGEST: ${{ needs.build_and_push.outputs.image_digest }}
+      LAMBDA_ALIAS: latest
     steps:
       - uses: actions/checkout@v4
 
@@ -122,6 +124,7 @@ jobs:
       - name: Ensure Lambda exists and is Image type
         run: |
           set -euo pipefail
+          ALIAS="${LAMBDA_ALIAS:-latest}"
           aws lambda get-function --function-name "${LAMBDA_FUNCTION_NAME}" >/dev/null
           PKG=$(aws lambda get-function-configuration --function-name "${LAMBDA_FUNCTION_NAME}" --query 'PackageType' --output text)
           echo "PackageType=${PKG}"
@@ -130,25 +133,50 @@ jobs:
             exit 1
           fi
 
-      - name: Update function code
+      - name: Update function code (publish & capture version)
         id: update
         env:
           IMAGE_URI_BY_DIGEST: ${{ env.REGISTRY }}/${{ env.IMAGE_REPO }}@${{ env.IMAGE_DIGEST }}
         run: |
           set -euo pipefail
+          command -v jq >/dev/null 2>&1 || (sudo apt-get update -y && sudo apt-get install -y jq)
+          
           echo "Using image: ${IMAGE_URI_BY_DIGEST}"
-          aws lambda update-function-code \
-            --function-name "${LAMBDA_FUNCTION_NAME}" \
-            --image-uri "${IMAGE_URI_BY_DIGEST}"
-          # --publish
+          OUT=$(aws lambda update-function-code \
+          --function-name "${LAMBDA_FUNCTION_NAME}" \
+          --image-uri "${IMAGE_URI_BY_DIGEST}" \
+          --publish)
+            
+          NEW_VERSION=$(echo "$OUT" | jq -r '.Version')
+          NEW_IMAGE=$(echo "$OUT" | jq -r '.ImageUri')
+            
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "new_image_uri=$NEW_IMAGE" >> $GITHUB_OUTPUT
+            
+          echo "Published version: $NEW_VERSION"
+          echo "ImageUri: $NEW_IMAGE"
 
-      - name: function points to new digest
+      - name: Shift alias to the new version
+        id: alias
         run: |
           set -euo pipefail
-          EXPECT="${{ env.REGISTRY }}/${{ env.IMAGE_REPO }}@${{ env.IMAGE_DIGEST }}"
-          CUR=$(aws lambda get-function --function-name "${LAMBDA_FUNCTION_NAME}" --query 'Code.ImageUri' --output text)
-          echo "Current ImageUri: $CUR"
-          if [ "$CUR" != "$EXPECT" ]; then
-            echo "::error::Lambda is not using the new image digest."
-            exit 1
+          PREV_VERSION=$(aws lambda get-alias \
+          --function-name "${LAMBDA_FUNCTION_NAME}" \
+          --name "${LAMBDA_ALIAS}" \
+          --query 'FunctionVersion' --output text 2>/dev/null || echo "")
+          echo "prev_version=${PREV_VERSION}" >> $GITHUB_OUTPUT
+                
+          NEW_VERSION="${{ steps.update.outputs.new_version }}"
+                
+          if aws lambda get-alias --function-name "${LAMBDA_FUNCTION_NAME}" --name "${LAMBDA_ALIAS}" >/dev/null 2>&1; then
+            aws lambda update-alias \
+              --function-name "${LAMBDA_FUNCTION_NAME}" \
+              --name "${LAMBDA_ALIAS}" \
+              --function-version "${NEW_VERSION}" >/dev/null
+          else
+            aws lambda create-alias \
+              --function-name "${LAMBDA_FUNCTION_NAME}" \
+              --name "${LAMBDA_ALIAS}" \
+              --function-version "${NEW_VERSION}" >/dev/null
           fi
+            echo "shifted_to=${NEW_VERSION}" >> $GITHUB_OUTPUT
