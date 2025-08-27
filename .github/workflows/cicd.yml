@@ -6,17 +6,17 @@ on:
       - feat/#10-cicd
 #    branches: ["dev", "refactor/seperate-ci"]
 
-  concurrency:
-    group: review-lambda-${{ github.ref }}
-    cancel-in-progress: true
+concurrency:
+  group: review-lambda-${{ github.ref }}
+  cancel-in-progress: true
 
-  env:
-    AWS_REGION: ap-northeast-2
-    ECR_REPO: report-python
-    LAMBDA_FUNCTION_NAME: report-python-lambda
-    LAMBDA_ALIAS: latest
+env:
+  AWS_REGION: ap-northeast-2
+  ECR_REPO: report-python
+  LAMBDA_FUNCTION_NAME: report-python-lambda
+  LAMBDA_ALIAS: latest
 
-  jobs:
+jobs:
     #  test:
     #    name: Run Python tests
     #    runs-on: ubuntu-latest
@@ -33,141 +33,141 @@ on:
     #      - name: Pytest
     #        run: pytest -q --maxfail=1 --disable-warnings
 
-    build_and_push:
-      name: Build & Push to ECR
-      runs-on: ubuntu-24.04
-      #    needs: test
-      #    if: ${{ needs.test.result == 'success' }}
-      outputs:
-        image_digest: ${{ steps.build.outputs.digest }}
-        registry: ${{ steps.ecr.outputs.registry }}
-        image_repo: ${{ env.ECR_REPO }}
-      permissions:
-        id-token: write
-        contents: read
-      steps:
-        - uses: actions/checkout@v4
+  build_and_push:
+    name: Build & Push to ECR
+    runs-on: ubuntu-24.04
+    #    needs: test
+    #    if: ${{ needs.test.result == 'success' }}
+    outputs:
+      image_digest: ${{ steps.build.outputs.digest }}
+      registry: ${{ steps.ecr.outputs.registry }}
+      image_repo: ${{ env.ECR_REPO }}
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
 
-        - name: Configure AWS credentials
-          uses: aws-actions/configure-aws-credentials@v4
-          with:
-            aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-            aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-            aws-region: ${{ env.AWS_REGION }}
-            # role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+          # role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
 
-        # ECR 로그인
-        - name: Login to Amazon ECR
-          id: ecr
-          uses: aws-actions/amazon-ecr-login@v2
+      # ECR 로그인
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
 
-        # 태그/라벨 자동화 (latest + sha)
-        - name: Extract image metadata
-          id: meta
-          uses: docker/metadata-action@v5
-          with:
-            images: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO }}
-            tags: |
-              type=raw,value=latest
-              type=sha,format=short
-            labels: |
-              org.opencontainers.image.source=${{ github.repository }}
-              org.opencontainers.image.revision=${{ github.sha }}
-              org.opencontainers.image.created=${{ github.run_id }}
+      # 태그/라벨 자동화 (latest + sha)
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO }}
+          tags: |
+            type=raw,value=latest
+           type=sha,format=short
+          labels: |
+            org.opencontainers.image.source=${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ github.run_id }}
 
-        # Buildx + 캐시
-        - name: Set up Buildx
-          id: buildx
-          uses: docker/setup-buildx-action@v3
-          with:
-            install: true
+      # Buildx + 캐시
+      - name: Set up Buildx
+        id: buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          install: true
 
-        # 빌드 & 푸시
-        - name: Build & Push
-          id: build
-          uses: docker/build-push-action@v6
-          with:
-            context: .
-            file: Dockerfile
-            push: true
-            tags: ${{ steps.meta.outputs.tags }}
-            labels: ${{ steps.meta.outputs.labels }}
-            cache-from: type=gha
-            cache-to: type=gha,mode=max
-            provenance: false
-            sbom: false
-            outputs: type=registry,oci-mediatypes=false,compression=gzip,force-compression=true
-            platforms: linux/amd64
+      # 빌드 & 푸시
+      - name: Build & Push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+          sbom: false
+          outputs: type=registry,oci-mediatypes=false,compression=gzip,force-compression=true
+          platforms: linux/amd64
 
-    deploy_lambda:
-      name: Update Lambda (by digest) + Shift alias
-      runs-on: ubuntu-latest
-      needs: build_and_push
-      permissions:
-        id-token: write
-        contents: read
-      env:
-        REGISTRY: ${{ needs.build_and_push.outputs.registry }}
-        IMAGE_REPO: ${{ needs.build_and_push.outputs.image_repo }}
-        IMAGE_DIGEST: ${{ needs.build_and_push.outputs.image_digest }}
-      steps:
-        - uses: actions/checkout@v4
+  deploy_lambda:
+    name: Update Lambda (by digest) + Shift alias
+    runs-on: ubuntu-latest
+    needs: build_and_push
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      REGISTRY: ${{ needs.build_and_push.outputs.registry }}
+      IMAGE_REPO: ${{ needs.build_and_push.outputs.image_repo }}
+      IMAGE_DIGEST: ${{ needs.build_and_push.outputs.image_digest }}
+    steps:
+      - uses: actions/checkout@v4
 
-        - name: Configure AWS credentials
-          uses: aws-actions/configure-aws-credentials@v4
-          with:
-            aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-            aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-            aws-region: ${{ env.AWS_REGION }}
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
 
-        - name: Ensure Lambda exists
-          run: aws lambda get-function --function-name "${LAMBDA_FUNCTION_NAME}" >/dev/null
+      - name: Ensure Lambda exists
+        run: aws lambda get-function --function-name "${LAMBDA_FUNCTION_NAME}" >/dev/null
 
-        - name: Update function code (publish & capture version)
-          id: update
-          env:
-            IMAGE_URI_BY_DIGEST: ${{ env.REGISTRY }}/${{ env.IMAGE_REPO }}@${{ env.IMAGE_DIGEST }}
-          run: |
-            set -euo pipefail
-            # jq가 없을 경우 설치 (우분투 기본 포함인 경우도 많지만 안전하게)
-            command -v jq >/dev/null 2>&1 || (sudo apt-get update -y && sudo apt-get install -y jq)
+      - name: Update function code (publish & capture version)
+        id: update
+        env:
+          IMAGE_URI_BY_DIGEST: ${{ env.REGISTRY }}/${{ env.IMAGE_REPO }}@${{ env.IMAGE_DIGEST }}
+        run: |
+          set -euo pipefail
+          # jq가 없을 경우 설치 (우분투 기본 포함인 경우도 많지만 안전하게)
+          command -v jq >/dev/null 2>&1 || (sudo apt-get update -y && sudo apt-get install -y jq)
+          
+          echo "Using image: ${IMAGE_URI_BY_DIGEST}"
+          OUT=$(aws lambda update-function-code \
+            --function-name "${LAMBDA_FUNCTION_NAME}" \
+            --image-uri "${IMAGE_URI_BY_DIGEST}" \
+            --publish)
+          
+          NEW_VERSION=$(echo "$OUT" | jq -r '.Version')
+          NEW_IMAGE=$(echo "$OUT" | jq -r '.ImageUri')
+          
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "new_image_uri=$NEW_IMAGE" >> $GITHUB_OUTPUT
+          
+          echo "Published version: $NEW_VERSION"
+          echo "ImageUri: $NEW_IMAGE"
 
-            echo "Using image: ${IMAGE_URI_BY_DIGEST}"
-            OUT=$(aws lambda update-function-code \
-              --function-name "${LAMBDA_FUNCTION_NAME}" \
-              --image-uri "${IMAGE_URI_BY_DIGEST}" \
-              --publish)
-
-            NEW_VERSION=$(echo "$OUT" | jq -r '.Version')
-            NEW_IMAGE=$(echo "$OUT" | jq -r '.ImageUri')
-
-            echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
-            echo "new_image_uri=$NEW_IMAGE" >> $GITHUB_OUTPUT
-
-            echo "Published version: $NEW_VERSION"
-            echo "ImageUri: $NEW_IMAGE"
-
-        - name: Shift alias to the new version
-          id: alias
-          run: |
-            set -euo pipefail
-            PREV_VERSION=$(aws lambda get-alias \
+      - name: Shift alias to the new version
+        id: alias
+        run: |
+          set -euo pipefail
+          PREV_VERSION=$(aws lambda get-alias \
+            --function-name "${LAMBDA_FUNCTION_NAME}" \
+            --name "${LAMBDA_ALIAS}" \
+            --query 'FunctionVersion' --output text 2>/dev/null || echo "")
+          echo "prev_version=${PREV_VERSION}" >> $GITHUB_OUTPUT
+          
+          NEW_VERSION="${{ steps.update.outputs.new_version }}"
+          
+          if aws lambda get-alias --function-name "${LAMBDA_FUNCTION_NAME}" --name "${LAMBDA_ALIAS}" >/dev/null 2>&1; then
+            aws lambda update-alias \
               --function-name "${LAMBDA_FUNCTION_NAME}" \
               --name "${LAMBDA_ALIAS}" \
-              --query 'FunctionVersion' --output text 2>/dev/null || echo "")
-            echo "prev_version=${PREV_VERSION}" >> $GITHUB_OUTPUT
-
-            NEW_VERSION="${{ steps.update.outputs.new_version }}"
-
-            if aws lambda get-alias --function-name "${LAMBDA_FUNCTION_NAME}" --name "${LAMBDA_ALIAS}" >/dev/null 2>&1; then
-              aws lambda update-alias \
-                --function-name "${LAMBDA_FUNCTION_NAME}" \
-                --name "${LAMBDA_ALIAS}" \
-                --function-version "${NEW_VERSION}" >/dev/null
-            else
-              aws lambda create-alias \
-                --function-name "${LAMBDA_FUNCTION_NAME}" \
-                --name "${LAMBDA_ALIAS}" \
-                --function-version "${NEW_VERSION}" >/dev/null
-            fi
-            echo "shifted_to=${NEW_VERSION}" >> $GITHUB_OUTPUT
+              --function-version "${NEW_VERSION}" >/dev/null
+          else
+            aws lambda create-alias \
+              --function-name "${LAMBDA_FUNCTION_NAME}" \
+              --name "${LAMBDA_ALIAS}" \
+              --function-version "${NEW_VERSION}" >/dev/null
+          fi
+          echo "shifted_to=${NEW_VERSION}" >> $GITHUB_OUTPUT
