@@ -82,7 +82,7 @@ jobs:
         with:
           install: true
 
-      # 빌드 & 푸시 (digest 출력)
+      # 빌드 & 푸시
       - name: Build & Push
         id: build
         uses: docker/build-push-action@v6
@@ -94,6 +94,10 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          provenance: false
+          sbom: false
+          outputs: type=registry,oci-mediatypes=false,compression=gzip,force-compression=true
+          platforms: linux/amd64
 
   deploy_lambda:
     name: Update Lambda (by digest) + Shift alias
