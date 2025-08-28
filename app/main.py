@@ -74,7 +74,7 @@ def generate_json(req: ReportGenerationRequest = None):
         #         fig.savefig(debug_filepath, dpi=150, bbox_inches='tight')
 
         # 2. 리뷰 데이터 분석
-        review_insights = analyze_reviews(review_payload)
+        review_insights = analyze_reviews(review_payload, visualize=True)
 
         # 3. 주문/리뷰 분석 결과들을 모아 PDF 파일로 생성
         with open(path, "wb") as f:

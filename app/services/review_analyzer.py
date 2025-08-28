@@ -10,8 +10,10 @@ from sklearn.metrics.pairwise import cosine_similarity
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import connected_components
 import hdbscan
+import matplotlib.pyplot as plt
 
 from ..models import ReviewPayload, ReviewRow
+from .plotter import plot_clustering, fig_to_base64
 
 try:
     import kss
@@ -49,7 +51,10 @@ def _sentiment_of(sentence: str, rating: int) -> Literal["pos","neg","neu"]:
 # === OpenAI ===
 load_dotenv()
 API_KEY = os.getenv('OPENAI_API_KEY')
-client = OpenAI(api_key = API_KEY)
+if API_KEY:
+    client = OpenAI(api_key = API_KEY)
+else:
+    client = None
 
 def _embed_sentences(sents: List[str]) -> np.ndarray:
     resp = client.embeddings.create(model="text-embedding-3-small", input=sents)
@@ -59,6 +64,10 @@ def _embed_sentences(sents: List[str]) -> np.ndarray:
     return vecs / norms
 
 def _summarize_and_label_with_openai(sentences: List[str], label_hint: str = "") -> Dict[str, str]:
+    if client is None:
+        # 더미 응답 생성
+        return {"label": "테스트 라벨", "summary": f"테스트 요약: {sentences[0][:50]}..."}
+    
     bullets = "\n".join(f"- {s}" for s in sentences[:12])
     schema = {
         "type": "json_schema",
@@ -196,7 +205,8 @@ def analyze_reviews(
     review_payload: ReviewPayload,
     top_k: int = 3,
     min_sentence_len: int = 5,
-    min_cluster_size: int = 3
+    min_cluster_size: int = 3,
+    visualize: bool = False
 ) -> Dict:
     """리뷰 페이로드를 받아 긍/부정에 대한 분석글 생성"""
     pos_sents, neg_sents, valid_sentence_count = [], [], 0
@@ -230,4 +240,48 @@ def analyze_reviews(
         "pros": pros,
         "cons": cons,
     }
+
+    # 시각화 추가
+    if visualize and (pos_sents or neg_sents):
+        all_sents = pos_sents + neg_sents
+        print(f"시각화용 문장 수: {len(all_sents)}", file=sys.stderr)
+        if all_sents:
+            X = _embed_sentences(all_sents)
+            print(f"임베딩 차원: {X.shape}", file=sys.stderr)
+            try:
+                # HDBSCAN 시도
+                groups = _cluster_embeddings(X, min_cluster_size=min_cluster_size, min_samples=min_cluster_size)
+                print(f"HDBSCAN 군집 수: {len(groups)}", file=sys.stderr)
+                
+                # HDBSCAN이 실패하면 간단한 그룹핑 사용
+                if not groups:
+                    print("HDBSCAN 실패, 간단한 그룹핑 사용", file=sys.stderr)
+                    # 긍정/부정 기반으로 그룹 만들기
+                    pos_indices = []
+                    neg_indices = []
+                    for i, sent in enumerate(all_sents):
+                        if sent in pos_sents:
+                            pos_indices.append(i)
+                        else:
+                            neg_indices.append(i)
+                    
+                    groups = []
+                    if pos_indices:
+                        groups.append(pos_indices)
+                    if neg_indices:
+                        groups.append(neg_indices)
+                
+                if groups:
+                    print(f"최종 군집 수: {len(groups)}", file=sys.stderr)
+                    print(f"군집 크기들: {[len(g) for g in groups]}", file=sys.stderr)
+                    fig = plot_clustering(X, groups, method="pca")
+                    result["visualization"] = fig_to_base64(fig)
+                    plt.close(fig)  # 메모리 해제
+                    print("시각화 생성 성공!", file=sys.stderr)
+                else:
+                    print("모든 군집화 방법 실패", file=sys.stderr)
+            except Exception as e:
+                print(f"시각화 생성 실패: {e}", file=sys.stderr)
+                traceback.print_exc()
+
     return result
