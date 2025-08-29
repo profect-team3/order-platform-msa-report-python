@@ -16,11 +16,14 @@ from .services.chart_analyzer import analyze_charts # 차트 분석
 from .services.pdf_generator import build_report_pdf  # PDF 생성
 from .services import plotter
 
-import boto3
 import logging
 logger = logging.getLogger("app")
 
 load_dotenv()
+
+# 재사용 가능한 객체는 핸들러 함수 바깥(모듈 레벨)에서 초기화 -> 성능 향상
+import boto3
+s3_client = boto3.client("s3")
 
 app = FastAPI(title="Report Server")
 
@@ -101,7 +104,6 @@ def generate_json(req: ReportGenerationRequest = None):
 
         # 4. 생성된 PDF를 S3에 업로드
         pdf_buffer.seek(0)
-        s3_client = boto3.client("s3")
         s3_client.upload_fileobj(pdf_buffer, s3_bucket, s3_key)
         
         region_name = s3_client.meta.region_name
