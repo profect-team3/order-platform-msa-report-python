@@ -2,11 +2,10 @@ import os
 import io
 import base64
 from typing import Dict
-from openai import OpenAI
 from matplotlib.figure import Figure
 
-# OpenAI 클라이언트 초기화
-client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+# 공유 클라이언트를 임포트하여 사용
+from ..utils.openai_client import client
 
 def _figure_to_base64(fig: Figure) -> str:
     """Matplotlib Figure를 base64 인코딩된 PNG 문자열로 변환합니다."""

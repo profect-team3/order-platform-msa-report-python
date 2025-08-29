@@ -4,14 +4,14 @@ from typing import List, Dict, Literal
 import numpy as np
 from dotenv import load_dotenv
 import traceback, sys
-
-from openai import OpenAI
 from sklearn.metrics.pairwise import cosine_similarity
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import connected_components
 import hdbscan
 
-from ..models import ReviewPayload, ReviewRow
+# 공유 클라이언트를 임포트하여 사용
+from ..utils.openai_client import client
+from ..models import ReviewPayload
 
 try:
     import kss
@@ -46,11 +46,6 @@ def _sentiment_of(sentence: str, rating: int) -> Literal["pos","neg","neu"]:
     if neg_hit > pos_hit: return "neg"
     return "neu"
 
-# === OpenAI ===
-load_dotenv()
-API_KEY = os.getenv('OPENAI_API_KEY')
-client = OpenAI(api_key = API_KEY)
-
 def _embed_sentences(sents: List[str]) -> np.ndarray:
     resp = client.embeddings.create(model="text-embedding-3-small", input=sents)
     vecs = np.array([d.embedding for d in resp.data], dtype="float32")
@@ -78,7 +73,7 @@ def _summarize_and_label_with_openai(sentences: List[str], label_hint: str = "")
     }
     prompt = (
         "다음 고객 리뷰 문장들을 근거로 결과를 생성하세요.\n"
-        "- label: 주제를 2~6자 내의 자연스러운 카테고리로 (예: 포장, 직원 응대, 배달 지연, 온도/식감, 가성비, 누락 등).\n"
+        "- label: 주제를 2~8자 내의 자연스러운 카테고리로 (예: 포장, 직원 응대, 배달 지연, 온도/식감, 가성비, 누락 등).\n"
         "- summary: 점주용 리포트에 들어갈 분석 요약. 1~2문장, 200자 이내.\n"
         "- 원문을 그대로 복사하지 말고, 의미를 유지하며 재서술할 것.\n"
         f"- 주제 힌트: {label_hint}\n"
