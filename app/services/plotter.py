@@ -1,5 +1,6 @@
 import io
-from typing import Dict, Any
+from typing import Dict, Any, List
+import base64
 
 import numpy as np
 import pandas as pd
@@ -7,6 +8,8 @@ import matplotlib
 matplotlib.use("Agg")  # GUI 백엔드가 없는 환경에서도 실행 가능하도록 설정
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
 
 # --- 사용자 지정 색상 ---
 
@@ -196,3 +199,77 @@ def plot_reorder_gap_hist(df: pd.DataFrame) -> Figure:
     # ax.set_title(title, fontsize=12, fontweight="bold")
     ax.set_ylabel("재주문 건수")
     return fig
+
+def plot_clustering(X: np.ndarray, groups: List[List[int]], method: str = "pca") -> Figure:
+    """
+    군집화 결과를 2D로 시각화합니다.
+    
+    Args:
+        X: 임베딩 벡터들 (n_samples, n_features)
+        groups: 군집 그룹 리스트, 각 그룹은 인덱스 리스트
+        method: 차원 축소 방법 ('pca' 또는 'tsne')
+    
+    Returns:
+        matplotlib Figure 객체
+    """
+    fig, ax = plt.subplots(figsize=(8, 6))
+    title = f"군집화 결과 시각화 ({method.upper()})"
+    
+    if X.shape[0] == 0:
+        _empty_chart(ax, title)
+        return fig
+    
+    # 차원 축소
+    if method == "tsne":
+        reducer = TSNE(n_components=2, random_state=42, perplexity=min(30, X.shape[0]-1))
+    else:
+        reducer = PCA(n_components=2, random_state=42)
+    
+    try:
+        X_2d = reducer.fit_transform(X)
+    except Exception as e:
+        print(f"차원 축소 실패: {e}", file=sys.stderr)
+        _empty_chart(ax, title)
+        return fig
+    
+    # 그룹별 색상 할당
+    n_groups = len(groups)
+    colors = CATEGORICAL_PALETTE * (n_groups // len(CATEGORICAL_PALETTE) + 1)
+    
+    # 모든 포인트를 노이즈로 초기화
+    labels = np.full(X.shape[0], -1, dtype=int)
+    for i, group in enumerate(groups):
+        for idx in group:
+            labels[idx] = i
+    
+    # 노이즈 포인트 (회색)
+    noise_mask = labels == -1
+    if np.any(noise_mask):
+        ax.scatter(X_2d[noise_mask, 0], X_2d[noise_mask, 1], 
+                  c='gray', alpha=0.5, s=20, label='노이즈')
+    
+    # 각 그룹 플롯
+    for i, group in enumerate(groups):
+        if not group:
+            continue
+        group_points = X_2d[group]
+        ax.scatter(group_points[:, 0], group_points[:, 1], 
+                  c=colors[i], alpha=0.7, s=30, 
+                  label=f'군집 {i+1} ({len(group)}개)')
+    
+    ax.set_title(title, fontsize=12, fontweight="bold")
+    ax.set_xlabel("차원 1")
+    ax.set_ylabel("차원 2")
+    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    _theme(ax, grid=False)
+    fig.tight_layout()
+    return fig
+
+def fig_to_base64(fig: Figure) -> str:
+    """matplotlib Figure를 base64 문자열로 변환합니다."""
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', bbox_inches='tight')
+    buf.seek(0)
+    img_base64 = base64.b64encode(buf.read()).decode('utf-8')
+    buf.close()
+    return f"data:image/png;base64,{img_base64}"
