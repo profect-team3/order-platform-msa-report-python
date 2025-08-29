@@ -21,7 +21,6 @@ logger = logging.getLogger("app")
 
 load_dotenv()
 
-# 재사용 가능한 객체는 핸들러 함수 바깥(모듈 레벨)에서 초기화 -> 성능 향상
 import boto3
 s3_client = boto3.client("s3")
 
@@ -106,15 +105,23 @@ def generate_json(req: ReportGenerationRequest = None):
         pdf_buffer.seek(0)
         s3_client.upload_fileobj(pdf_buffer, s3_bucket, s3_key)
         
-        region_name = s3_client.meta.region_name
-        s3_url = f"https://{s3_bucket}.s3.{region_name}.amazonaws.com/{s3_key}"
-
+        # region_name = s3_client.meta.region_name
+        # s3_url = f"https://{s3_bucket}.s3.{region_name}.amazonaws.com/{s3_key}"
+        
+        # 5. S3 객체에 대한 Presigned URL 생성
+        s3_presigned_url = s3_client.generate_presigned_url(
+            'get_object',
+            Params={'Bucket': s3_bucket, 'Key': s3_key},
+            ExpiresIn=60*10  # 단위: 초
+        )
+        
         response_data = {
-            "url": s3_url,
+            "url": s3_presigned_url, # 생성된 Presigned URL
             "createdAt": now.isoformat()
         }
 
         return JSONResponse(response_data)
     except Exception as e:
-        logger.exception("generate_json FAILED")
+        store_id_for_log = req.storeId if req and hasattr(req, 'storeId') else "Unknown"
+        logger.exception("generate_json FAILED for storeId: %s", store_id_for_log)
         raise HTTPException(status_code=500, detail=f"Report generation failed: {str(e)}")
